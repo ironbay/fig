@@ -1,61 +1,115 @@
-defmodule Fig.Legacy do
-	defmacro __using__(opts) do
+defmodule Fig do
+	defmacro __using__(_opts) do
 		quote do
+			import Fig
 
+			@definitions %{}
+
+			def get(application, [key | path]) do
+				application
+				|> Application.get_env(key)
+				|> Dynamic.get(path)
+			end 
+
+			@before_compile Fig
 		end
 	end
 
-	defmacro config([{root, value}]) do
-		{map, _} =
-			value
-			|> Code.eval_quoted
-
-		flattened =
+	defmacro config(application, items) do
+		{map, _} = Code.eval_quoted(items)
+		funs =
 			map
 			|> Dynamic.flatten
-			|> Enum.map(fn {key, value} -> [key, [root] ++ key, value] end)
-			|> Enum.map(fn [key, full, value] -> [key, full |> Enum.join("_") |> String.to_atom, value] end)
-
-		result =
-			flattened
-			|> Enum.map(fn [_, full, value] ->
-					uppercase =
-						full
-						|> Atom.to_string
-						|> String.upcase
+			|> Enum.map(fn {path, value} ->
+				full =
+					[application | path]
+					|> Enum.join("_")
+					|> String.to_atom
 				quote do
 					def unquote(full)() do
-						System.get_env(unquote(uppercase)) || unquote(value)
+						get(unquote(application), unquote(path))
 					end
 				end
 			end)
 
+		layers =
+			map
+			|> Dynamic.layers
+			|> Stream.filter(
+				fn
+					{[], _} -> false
+					_ -> true
+				end
+			)
+			|> Enum.map(fn {path, value} ->
+				full =
+					[application | path]
+					|> Enum.join("_")
+					|> String.to_atom
+				IO.inspect(value)
+				quote do
+					def unquote(full)() do
+						get(unquote(application), unquote(path))
+					end
+				end
+			end)
 		[
 			quote do
-				def unquote(root)() do
-					unquote(flattened)
-					|> Enum.reduce(%{}, fn [key, full, _], collect ->
-						Dynamic.put(collect, key, apply(__MODULE__, full, []))
-					end)
+				@definitions Map.put(@definitions, unquote(application), unquote(items))
+			end,
+			quote do
+				def unquote(application)() do
+					Application.get_all_env(unquote(application)) |> Enum.into(%{})
 				end
 			end
-			| result
-		]
+		] ++ funs ++ layers
 	end
 
-	defmacro defconfig(opts) do
-		case Enum.at(opts, 0) do
-			{name, {env, default}} -> Fig.create(name: name, env: env, default: default)
-			{name, value} -> Fig.create(name: name, env: name |> Atom.to_string |> String.upcase, default: value)
+	defmacro __before_compile__(_env) do
+		quote do
+			def definitions, do: @definitions
+
+			def load(loader) do
+				loader.load(definitions())
+			end
 		end
 	end
+end
 
-	def create([name: name, env: env, default: default]) do
-		quote do
-			def unquote(name)() do
-				unquote(env)
-				|> System.get_env || unquote(default)
-			end
+defmodule Fig.Example do
+	use Fig
+
+	config :test, %{
+		a: %{
+			cool: "nice",
+			fine: "lol"
+		},
+		b: nil,
+	}
+end
+
+defmodule Fig.Loader.Env do
+	def load(definitions) do
+		definitions
+		|> Dynamic.flatten
+		|> Enum.reduce(%{}, fn {path, value}, collect ->
+			Dynamic.put(collect, path, variable(path) || value)
+		end)
+		|> Stream.flat_map(fn {application, entries} -> Enum.map(entries, fn {key, value} -> {application, key, value} end) end)
+		|> Enum.each(fn {application, key, value} -> Application.put_env(application, key, value) end)
+	end
+
+	defp variable(path) do
+		str =
+			path
+			|> Enum.join("_")
+			|> String.upcase
+			|> System.get_env
+		try do
+			{result, _} = Code.eval_string(str)
+			result
+		rescue
+			_ -> str
 		end
 	end
 end
