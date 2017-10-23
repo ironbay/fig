@@ -95,9 +95,16 @@ defmodule Fig.Loader.Env do
 	end
 
 	defp variable(path) do
-		path
-		|> Enum.join("_")
-		|> String.upcase
-		|> System.get_env
+		str =
+			path
+			|> Enum.join("_")
+			|> String.upcase
+			|> System.get_env
+		try do
+			{result, _} = Code.eval_string(str)
+			result
+		rescue
+			_ -> str
+		end
 	end
 end
