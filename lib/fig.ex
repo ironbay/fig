@@ -1,4 +1,4 @@
-defmodule Fig do
+defmodule Fig.Legacy do
 	defmacro __using__(opts) do
 		quote do
 
@@ -58,15 +58,4 @@ defmodule Fig do
 			end
 		end
 	end
-end
-
-defmodule Fig.Example do
-	import Fig
-
-	config test: %{
-		this: %{
-			is: "lol"
-		}
-	}
-
 end
