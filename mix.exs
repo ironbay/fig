@@ -6,7 +6,7 @@ defmodule Fig.Mixfile do
       app: :fig,
       version: "0.1.0",
       elixir: "~> 1.5",
-      start_permanent: Mix.env == :prod,
+      start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
   end
@@ -22,7 +22,7 @@ defmodule Fig.Mixfile do
   defp deps do
     [
       # {:dep_from_hexpm, "~> 0.3.0"},
-      {:dynamic_ex, github: "ironbay/dynamic_ex"},
+      {:dynamic, github: "ironbay/dynamic", sparse: "elixir"}
     ]
   end
 end
